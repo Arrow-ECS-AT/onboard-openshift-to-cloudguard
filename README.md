@@ -14,7 +14,7 @@ In Infinity Portal you have to create a service account by visiting the Cloudgua
 
 The script supports the -h option which display a usage help:
 
-USAGE: ./onboard.sh -k <api-key> -s <api-secret> -p <projectname> -n <clustername> -r <api-region>
+```USAGE: ./onboard.sh -k <api-key> -s <api-secret> -p <projectname> -n <clustername> -r <api-region>```
 
 ## Bug Reporting
 
