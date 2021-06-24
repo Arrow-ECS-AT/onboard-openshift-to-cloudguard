@@ -13,7 +13,18 @@ exit_abnormal() {
 	exit 1
 }
 
-get_region_url() {
+get_dome9_agent_api_url() {
+	case "$1" in
+		"eu1")
+			echo "https://api-cpx.eu1.dome9.com/v2"
+			;;
+		*)
+			echo "https://api-cpx.dome9.com/v2"
+			;;
+	esac
+}
+
+get_dome9_onboarding_api_url() {
 	case "$1" in
 		"eu1")
 			echo "https://api.eu1.dome9.com/v2"
@@ -73,10 +84,11 @@ do
 	esac
 done
 
-dome9ApiUrl=$(get_region_url $region)
+dome9OnboardingApiUrl=$(get_dome9_onboarding_api_url $region)
+dome9AgentApiUrl=$(get_dome9_agent_api_url $region)
 
 echo -n "Onboarding cluster in CloudGuard... "
-cluster_id=$(curl -s  -X POST $dome9ApiUrl/KubernetesAccount -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"name\": \"$cluster_name\"}" --user $CHKP_CLOUDGUARD_API:$CHKP_CLOUDGUARD_SECRET | jq -r '.id')
+cluster_id=$(curl -s  -X POST $dome9OnboardingApiUrl/KubernetesAccount -H "Content-Type: application/json" -H "Accept: application/json" -d "{\"name\": \"$cluster_name\"}" --user $CHKP_CLOUDGUARD_API:$CHKP_CLOUDGUARD_SECRET | jq -r '.id')
 echo "Done (Cluster-ID: $cluster_id)."
 	
 # Generate secret
@@ -92,35 +104,19 @@ then
 else
 	echo "Secret already exists."
 fi
-oc get secret dome9-creds -n $namespace > /dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-	echo -n "An error occured: "
-	echo "oc create secret generic dome9-creds --from-literal=username=$CHKP_CLOUDGUARD_API --from-literal=secret=$CHKP_CLOUDGUARD_SECRET --namespace $namespace!"
-	read -n 1 -s -r -p "Press any key to continue"
-	echo
-fi
 
 # Create Configmap
 oc get configmap cp-resource-management-configmap --namespace $namespace >/dev/null 2>&1
 if [[ $? -ne 0 ]]
 then
-	echo -n "Creating config map (ClusterID: $cluster_id, API-URL: $dome9ApiUrl)... "
+	echo -n "Creating config map (ClusterID: $cluster_id, API-URL: $dome9AgentApiUrl)... "
 	oc create configmap cp-resource-management-configmap \
 		--from-literal=cluster.id=$cluster_id \
-		--from-literal=dome9url=$dome9ApiUrl \
+		--from-literal=dome9url=$dome9AgentApiUrl \
 		--namespace $namespace >/dev/null 2>&1
 	echo "Done."
 else
 	echo "Config Map already exists."
-fi
-oc get configmap cp-resource-management-configmap --namespace $namespace >/dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-        echo -n "An error occured: "
-	echo "oc create configmap cp-resource-management-configmap --from-literal=cluster.id=$cluster_id --from-literal=dome9url=$dome9ApiUrl --namespace $namespace"
-        read -n 1 -s -r -p "Press any key to continue"
-	echo
 fi
 
 # Create Services account
@@ -132,14 +128,6 @@ then
 	echo "Done."
 else
 	echo "Service account already exists."
-fi
-oc get serviceaccount cp-resource-management --namespace $namespace >/dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-        echo -n "An error occured: "
-        echo "oc create serviceaccount cp-resource-management --namespace $namespace"
-	read -n 1 -s -r -p "Press any key to continue"
-	echo
 fi
 
 # Create Admin User. Make sure uid1000.json is in the same directory.
@@ -161,14 +149,6 @@ then
 else
 	echo "Security Context Constraint already exists."
 fi
-oc get securitycontextconstraints.security.openshift.io uid1000 >/dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-        echo -n "An error occured: "
-        echo "oc create -f uid1000.json --as system:admin"
-        read -n 1 -s -r -p "Press any key to continue"
-        echo
-fi
 
 # Add policy to service account
 echo -n "Adding SCC to user... "
@@ -187,14 +167,6 @@ then
 else
 	echo "Clusterrole already exists."
 fi
-oc get clusterrole cp-resource-management >/dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-        echo -n "An error occured: "
-        echo "oc create clusterrole cp-resource-management --verb=get,list --resource=pods,nodes,services,nodes/proxy,networkpolicies.networking.k8s.io,ingresses.extensions,podsecuritypolicies,roles,rolebindings,clusterroles,clusterrolebindings,serviceaccounts,namespaces"
-        read -n 1 -s -r -p "Press any key to continue"
-        echo
-fi
 
 # Clusterrole binding
 oc get clusterrolebinding cp-resource-management >/dev/null 2>&1
@@ -207,14 +179,6 @@ then
 	echo "Done."
 else
 	echo "Cluster role binding already exists."
-fi
-oc get clusterrolebinding cp-resource-management >/dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-        echo -n "An error occured: "
-        echo "oc create clusterrolebinding cp-resource-management --clusterrole=cp-resource-management --serviceaccount=$namespace:cp-resource-management"
-        read -n 1 -s -r -p "Press any key to continue"
-        echo
 fi
 
 # Deploy CloudGuard 
@@ -235,14 +199,5 @@ then
 else
 	echo "Deployment already exists."
 fi
-oc get deployment cp-resource-management --namespace $namespace >/dev/null 2>&1
-if [[ $? -ne 0 ]]
-then
-        echo -n "An error occured: "
-        echo "oc create -f cp-cloudguard-openshift.yaml --namespace=$namespace"
-        read -n 1 -s -r -p "Press any key to continue"
-        echo
-fi
 
-echo Cluster onboarding has been finished. 
-
+echo Cluster onboarding has finished successfully.
